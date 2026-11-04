@@ -1,3 +1,56 @@
-# AVADO Bitcoin Electrum Server
+# AVADO Electrum Server
 
-An AVADO package that runs Fulcrum, an Electrum server for the AVADO Bitcoin node.
+An AVADO package that runs [Fulcrum](https://github.com/cculianu/Fulcrum), an
+Electrum server, on the AVADO Bitcoin Node, with a plain-language page at
+`http://fulcrum.my.ava.do`. Wallet apps such as Sparrow, Electrum, Trezor
+Suite and BitBoxApp connect to it, so they ask the owner's own node about
+their coins instead of a stranger's server.
+
+Needs the Bitcoin Node package (`bitcoincore.avado.dnp.dappnode.eth`, repo
+AVADO-DNP-BitcoinCore) in full mode.
+
+## What it does
+
+- **Gets its own login from the Bitcoin Node** (`/internal/rpc-login/fulcrum`,
+  answered only to this app's container), writes it into `fulcrum.conf`
+  (readable only by this app) and never shows it. That login may call only the
+  RPC methods Fulcrum needs.
+- **Runs only on a full node.** On a pruned node (or one without the
+  transaction index) Fulcrum is not started and the page says, in plain
+  words, that the Electrum Server needs the full Bitcoin node and how much
+  free disk that takes.
+- **The page shows the exact address to type into the wallet**: the box's
+  address on the home network (asked from the DAPPMANAGER with `getParams`,
+  read-only) or `fulcrum.my.ava.do`, port 50002 with SSL, plus step-by-step
+  instructions for Sparrow and Electrum, the index progress and the
+  certificate fingerprint (under Details).
+- **A private server**: no peering, not announced to the public Electrum
+  network. A self-signed certificate (10 years) is made on the box.
+- **Repair button**: when Fulcrum reports a damaged index (power cut, or the
+  node started its download again), the page offers "Build the index again".
+
+Ports 50001 (plain) and 50002 (SSL) are published on the box so wallets on the
+home network can reach it.
+
+Setting: `DB_MEM_MB` (Fulcrum's database memory, default 2048).
+
+## Image
+
+Based on Fulcrum's own image `cculianu/fulcrum` (pinned by digest), plus the
+AVADO page and supervisor (Python standard library only, `build/app`; unit
+tests run during the build). Runs as an unprivileged user.
+
+## Licence and reuse
+
+GPL-3.0 (see LICENSE). Fulcrum is GPL-3.0, Copyright Calin Culianu and
+contributors; it is used unchanged from its official image.
+
+## Development
+
+```
+cd build/app && python3 -m unittest discover -s tests
+docker buildx build --platform linux/amd64 --load -t fulcrum-test -f build/Dockerfile .
+```
+
+Release after the Bitcoin Node is published in the store (store dependency).
+Merge with a merge commit, not squash.

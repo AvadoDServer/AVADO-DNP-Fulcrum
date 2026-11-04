@@ -1,0 +1,33 @@
+{
+  "name": "fulcrum.avado.dnp.dappnode.eth",
+  "version": "0.1.0",
+  "upstream": "v2.1.4",
+  "title": "Electrum Server",
+  "description": "Connect your hardware wallet to your own Bitcoin node. The Electrum Server (Fulcrum) lets wallet apps such as Sparrow, Electrum, Trezor Suite and BitBoxApp look up your coins and send your transactions through your own AVADO instead of a stranger's server. It needs the Bitcoin Node with the full history (at least 1.5 TB free for both together); on a space-saving node its page says so. Building its index takes about 1 to 2 days after the node has downloaded the history. Its page shows the exact address to type into your wallet.",
+  "shortDescription": "Connect Sparrow, Electrum and other wallets to your own Bitcoin node",
+  "type": "service",
+  "avadocategory": "bitcoin",
+  "autoupdate": true,
+  "image": {
+    "volumes": [
+      "fulcrum:/data"
+    ],
+    "ports": [
+      "50001:50001",
+      "50002:50002"
+    ],
+    "environment": [
+      "DB_MEM_MB=2048"
+    ],
+    "restart": "always"
+  },
+  "author": "AVADO",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "bitcoincore.avado.dnp.dappnode.eth": "0.1.0"
+  },
+  "links": {
+    "OnboardingWizard": "http://fulcrum.my.ava.do",
+    "HomePage": "https://github.com/cculianu/Fulcrum"
+  }
+}
