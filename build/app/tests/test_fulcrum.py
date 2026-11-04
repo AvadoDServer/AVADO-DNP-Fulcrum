@@ -170,5 +170,38 @@ class CertTest(unittest.TestCase):
             self.assertEqual(len(fp.split(":")), 32)
 
 
+class FramingTest(unittest.TestCase):
+    """The Admin's Setup tab shows this page in a frame; other sites may not."""
+
+    def test_only_the_admin_may_frame_the_page(self):
+        import avadoweb
+        csp = avadoweb.SECURITY_HEADERS["Content-Security-Policy"]
+        self.assertIn("frame-ancestors 'self' http://my.ava.do https://my.ava.do;", csp)
+        self.assertNotIn("X-Frame-Options", avadoweb.SECURITY_HEADERS)
+
+
+class NodeDownloadTest(unittest.TestCase):
+    """While the node downloads, Fulcrum already indexes; the page must not say "next"."""
+
+    def test_index_height_shown_during_node_download(self):
+        m = model(node=node(blocks=142000, headers=974000, verificationprogress=0.001, initialblockdownload=True),
+                  fulcrum={"height": 72000}, running=True)
+        self.assertEqual(m["progress"]["right"], "Electrum index: block 72,000")
+
+    def test_no_height_yet(self):
+        m = model(node=node(blocks=10, headers=974000, verificationprogress=0.0, initialblockdownload=True),
+                  fulcrum={}, running=True)
+        self.assertNotIn("next", m["progress"]["right"])
+
+    def test_index_height_from_the_log_line_before_the_admin_port_opens(self):
+        line = "[2026-11-04 19:22:09.124] <Controller> Processed height: 72000, 7.4%, 132.8 blocks/sec"
+        self.assertEqual(main.index_height(None, line), 72000)
+        self.assertEqual(main.index_height({"height": 80000}, line), 80000)
+        self.assertIsNone(main.index_height(None, "<Controller> Block height 142417, downloading new blocks ..."))
+        m = model(node=node(blocks=974000, headers=974000), fulcrum=None, running=True, progressLine=line)
+        self.assertEqual(m["headline"], "Your Electrum Server is building its index")
+        self.assertEqual(m["progress"]["left"], "Block 72,000 of 974,000")
+
+
 if __name__ == "__main__":
     unittest.main()

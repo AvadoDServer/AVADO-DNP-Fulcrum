@@ -182,7 +182,8 @@ class Fulcrum:
             line = raw.decode("utf-8", "replace").rstrip()
             # Fulcrum never logs the RPC password; the line goes to the container log as is.
             self.lines.append(line)
-            if "Processed height:" in line or "Block height" in line:
+            # Only the index lines: "Block height N" is the node's height, not the index's.
+            if "Processed height:" in line:
                 self.progress_line = line
             print(line, flush=True)
 
@@ -415,6 +416,19 @@ def fmt_int(n):
     return "{:,}".format(int(n))
 
 
+PROCESSED_RE = re.compile(r"Processed height: (\d+)")
+
+
+def index_height(fulcrum, progress_line):
+    """How far the index is. Fulcrum opens its admin port only after its first sync, so
+    during the first 1 to 2 days the height comes from its "Processed height: N" log line."""
+    height = (fulcrum or {}).get("height")
+    if isinstance(height, int):
+        return height
+    match = PROCESSED_RE.search(progress_line or "")
+    return int(match.group(1)) if match else None
+
+
 def build_model(info, config, rate):
     node = info.get("node") or {}
     fulcrum = info.get("fulcrum") or {}
@@ -425,7 +439,7 @@ def build_model(info, config, rate):
     headers = node.get("headers") or blocks
     node_progress = float(node.get("verificationprogress") or 0)
     node_ibd = bool(node.get("initialblockdownload")) or (node and node_progress < 0.9999)
-    height = fulcrum.get("height")
+    height = index_height(fulcrum, info.get("progressLine"))
     network = CHAIN_NAMES.get(node.get("chain"), node.get("chain"))
     test_note = "" if not node or node.get("chain") == "main" else " (test network: %s)" % network
 
@@ -497,9 +511,14 @@ def build_model(info, config, rate):
     elif node_ibd:
         model["state"] = "working"
         model["headline"] = "Your Bitcoin node is still downloading the history"
+        # Fulcrum indexes the blocks as the node downloads them (seen on the test box).
+        if isinstance(height, int) and height > 0:
+            index_note = "Electrum index: block %s" % fmt_int(height)
+        else:
+            index_note = "The Electrum Server indexes the blocks as they arrive"
         model["progress"] = {"percent": round(node_progress * 100, 2),
                              "left": "Bitcoin node: %.1f%% done" % (node_progress * 100),
-                             "right": "The Electrum Server builds its index next"}
+                             "right": index_note}
         model["text"] = ["The Electrum Server needs a complete node. It builds its own index while and after the node "
                          "downloads; in total this takes about 2 to 4 days on an AVADO. You can close this page."]
     else:
@@ -534,7 +553,7 @@ def build_model(info, config, rate):
         {"k": "Fulcrum version", "v": str(fulcrum.get("version") or "Unknown")},
         {"k": "Network", "v": network or "Unknown"},
         {"k": "Port with SSL", "v": str(config.ssl_port)},
-        {"k": "Port without SSL", "v": str(config.tcp_port)},
+        {"k": "Port without SSL", "v": "%d (only for wallets without SSL, on your home network)" % config.tcp_port},
         {"k": "Certificate fingerprint (SHA-256)", "v": info.get("fingerprint") or "Unknown"},
         {"k": "Shared with the public Electrum network", "v": "No (private server)"},
     ]
@@ -549,9 +568,8 @@ def build_model(info, config, rate):
 def connect_section(info, config, ready):
     ip = info.get("lanIp")
     s = {"id": "connect", "title": "Connect your hardware wallet to your own node"}
-    s["text"] = ["Use these settings in your wallet app (Sparrow, Electrum, Trezor Suite, BitBoxApp and others). Your "
-                 "hardware wallet stays connected to your computer as usual; only the wallet app on the computer "
-                 "talks to this server."]
+    s["text"] = ["Type these into your wallet app (Sparrow, Electrum, Trezor Suite, BitBoxApp and others). Your "
+                 "hardware wallet stays plugged into your computer as usual."]
     if not ready:
         s["text"].append("You can enter them now. The wallet connects as soon as the server is ready.")
     fields = []
@@ -578,8 +596,6 @@ def connect_section(info, config, ready):
     else:
         after.append("fulcrum.my.ava.do works when your computer is on the AVADO Wi-Fi or uses AVADO Remote Access. "
                      "On your home network, use the address your router shows for the AVADO.")
-    after.append("If your wallet does not offer SSL, use port %d with SSL off; only do this on your home network."
-                 % config.tcp_port)
     s["after"] = after
     return s
 
