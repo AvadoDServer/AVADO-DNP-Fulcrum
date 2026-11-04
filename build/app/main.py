@@ -506,8 +506,7 @@ def build_model(info, config, rate):
     elif ready and not node_ibd:
         model["state"] = "ok"
         model["headline"] = "Your Electrum Server is ready%s" % test_note
-        model["text"] = ["Your wallet can now ask your own node about your coins. Type the address below into "
-                         "Sparrow, Electrum or another wallet that supports your own Electrum server."]
+        model["text"] = ["Type the address below into Sparrow, Electrum or another wallet app."]
     elif node_ibd:
         model["state"] = "working"
         model["headline"] = "Your Bitcoin node is still downloading the history"
@@ -548,8 +547,53 @@ def build_model(info, config, rate):
     facts.append({"k": "Free on your AVADO", "v": avadoweb.human_bytes(free),
                   "tone": "warn" if free is not None and free < 50 * GB else None})
 
-    model["sections"].append(connect_section(info, config, ready and not node_ibd))
-    adv = [
+    model["sections"].append(connect_section(info, config, ready and not node_ibd, fulcrum, network))
+    return model
+
+
+def connect_section(info, config, ready, fulcrum, network):
+    """The one thing owners come here for: the address to type into the wallet. Short on top,
+    the steps per wallet and the technical details folded away under "Details"."""
+    ip = info.get("lanIp")
+    host = ip or "fulcrum.my.ava.do"
+    s = {"id": "connect", "title": "Connect your wallet"}
+    if not ready:
+        s["text"] = ["You can enter these now. Your wallet connects when the server is ready."]
+    s["fields"] = [
+        {"k": "Address", "v": host, "copy": True},
+        {"k": "Port", "v": str(config.ssl_port), "copy": True},
+        {"k": "SSL", "v": "On"},
+    ]
+    s["howto"] = ["In Sparrow: Settings, Server, \"Private Electrum\". Type the address and port, turn on "
+                  "\"Use SSL\", then press \"Test Connection\"."]
+    if ip:
+        away = ("The address above works on your home network. Away from home, with AVADO Remote Access on (or on "
+                "the AVADO Wi-Fi), use fulcrum.my.ava.do instead.")
+    else:
+        away = ("fulcrum.my.ava.do works when your computer is on the AVADO Wi-Fi or uses AVADO Remote Access. "
+                "On your home network, use the address your router shows for the AVADO.")
+    s["advancedTitle"] = "Details: Electrum, other wallets, away from home"
+    s["more"] = [
+        {"title": "Sparrow, step by step", "steps": [
+            "Open Settings (Preferences on a Mac), then Server.",
+            "Choose \"Private Electrum\" and type the address and port above.",
+            "Switch \"Use SSL\" on and press \"Test Connection\".",
+            "Accept the certificate when Sparrow asks.",
+        ]},
+        {"title": "Electrum", "steps": [
+            "Open Tools, then Network.",
+            "Switch off \"Select server automatically\".",
+            "Type %s:%d:s as the server. Accept the certificate when Electrum asks." % (host, config.ssl_port),
+        ]},
+        {"title": "Trezor Suite, BitBoxApp and other wallets",
+         "text": "Look for \"custom server\", \"Electrum server\" or \"connect your own node\" in the settings and use "
+                 "the address and port above with SSL on. Your hardware wallet stays plugged into your computer as usual."},
+        {"title": "Away from home", "text": away},
+        {"title": "Who can connect",
+         "text": "Only wallets on your home network, the AVADO Wi-Fi or AVADO Remote Access. Anyone else on the "
+                 "internet is turned away, even if your router forwards the port. The server is not announced to anyone."},
+    ]
+    s["advanced"] = [
         {"k": "Fulcrum version", "v": str(fulcrum.get("version") or "Unknown")},
         {"k": "Network", "v": network or "Unknown"},
         {"k": "Port with SSL", "v": str(config.ssl_port)},
@@ -557,46 +601,6 @@ def build_model(info, config, rate):
         {"k": "Certificate fingerprint (SHA-256)", "v": info.get("fingerprint") or "Unknown"},
         {"k": "Shared with the public Electrum network", "v": "No (private server)"},
     ]
-    model["sections"].append({"id": "details", "title": "About this server",
-                              "text": ["The server answers only wallets on your home network, the AVADO Wi-Fi or "
-                                       "AVADO Remote Access. Anyone else on the internet is turned away, even if "
-                                       "your router forwards the port. It is not announced to anyone."],
-                              "advanced": adv})
-    return model
-
-
-def connect_section(info, config, ready):
-    ip = info.get("lanIp")
-    s = {"id": "connect", "title": "Connect your hardware wallet to your own node"}
-    s["text"] = ["Type these into your wallet app (Sparrow, Electrum, Trezor Suite, BitBoxApp and others). Your "
-                 "hardware wallet stays plugged into your computer as usual."]
-    if not ready:
-        s["text"].append("You can enter them now. The wallet connects as soon as the server is ready.")
-    fields = []
-    if ip:
-        fields.append({"k": "Address", "v": ip, "copy": True})
-    else:
-        fields.append({"k": "Address", "v": "fulcrum.my.ava.do", "copy": True})
-    fields.append({"k": "Port", "v": str(config.ssl_port), "copy": True})
-    fields.append({"k": "SSL", "v": "On"})
-    s["fields"] = fields
-    host = ip or "fulcrum.my.ava.do"
-    s["steps"] = [
-        "Sparrow: open Settings (Preferences on a Mac), then Server. Choose \"Private Electrum\". Type the address "
-        "and port above, switch \"Use SSL\" on and press \"Test Connection\". Accept the certificate when Sparrow asks.",
-        "Electrum: open Tools, then Network. Switch off \"Select server automatically\" and type %s:%d:s as the "
-        "server. Accept the certificate when Electrum asks." % (host, config.ssl_port),
-        "Other wallets: look for \"custom server\", \"Electrum server\" or \"connect your own node\" in the settings "
-        "and use the address and port above with SSL on.",
-    ]
-    after = []
-    if ip:
-        after.append("This address works on your home network. Away from home, with AVADO Remote Access on (or on "
-                     "the AVADO Wi-Fi), use fulcrum.my.ava.do instead.")
-    else:
-        after.append("fulcrum.my.ava.do works when your computer is on the AVADO Wi-Fi or uses AVADO Remote Access. "
-                     "On your home network, use the address your router shows for the AVADO.")
-    s["after"] = after
     return s
 
 

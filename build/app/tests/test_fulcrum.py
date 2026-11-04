@@ -26,6 +26,23 @@ def model(**info):
     return main.build_model(base, main.Config({}), avadoweb.Rate())
 
 
+def main_view_words(m):
+    """Words an owner sees without opening "Details"."""
+    parts = [m.get("headline")] + list(m.get("text") or [])
+    parts += [(m.get("progress") or {}).get(k) for k in ("left", "right")]
+    for f in m.get("facts") or []:
+        parts += [f["k"], f["v"]]
+    for s in m.get("sections") or []:
+        parts += [s.get("title")] + list(s.get("text") or []) + list(s.get("howto") or []) + list(s.get("steps") or [])
+        parts += [s.get("after")] if isinstance(s.get("after"), str) else list(s.get("after") or [])
+        for f in s.get("fields") or []:
+            parts += [f["k"], f["v"]] + (["Copy"] if f.get("copy") else [])
+        parts += [b["label"] for b in (s.get("links") or []) + (s.get("buttons") or [])]
+        if s.get("more") or s.get("advanced"):
+            parts.append(s.get("advancedTitle") or "Details")
+    return len(" ".join(p for p in parts if p).split())
+
+
 class ConfTest(unittest.TestCase):
     def test_private_server(self):
         conf = main.render_conf(main.Config({}), "fulcrum", "s3cret", 8332)
@@ -55,7 +72,22 @@ class ModelTest(unittest.TestCase):
         connect = [s for s in m["sections"] if s["id"] == "connect"][0]
         self.assertEqual(connect["fields"][0]["v"], "192.168.1.23")
         self.assertEqual(connect["fields"][1]["v"], "50002")
-        self.assertIn("192.168.1.23:50002:s", " ".join(connect["steps"]))
+        more = " ".join(" ".join(m.get("steps") or []) for m in connect["more"])
+        self.assertIn("192.168.1.23:50002:s", more)
+
+    def test_ready_page_is_short(self):
+        """Address, port, SSL and one Sparrow line on top; the rest behind "Details" (about 120 words)."""
+        m = model(node=node(), running=True, ready=True, fulcrum={"height": 920000, "clients_connected": 1},
+                  lanIp="192.168.1.23")
+        self.assertEqual([s["id"] for s in m["sections"]], ["connect"])
+        connect = m["sections"][0]
+        self.assertEqual([f["k"] for f in connect["fields"]], ["Address", "Port", "SSL"])
+        self.assertIn("Sparrow", connect["howto"][0])
+        self.assertNotIn("steps", connect)
+        self.assertLessEqual(main_view_words(m), 120)
+        # still shown while the index is built
+        m = model(node=node(), running=True, ready=False, fulcrum={"height": 460000}, lanIp="192.168.1.23")
+        self.assertLessEqual(main_view_words(m), 120)
 
     def test_without_lan_ip_uses_avado_name(self):
         m = model(node=node(), running=True, ready=True, fulcrum={"height": 1})
