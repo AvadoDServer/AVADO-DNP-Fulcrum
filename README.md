@@ -30,7 +30,15 @@ AVADO-DNP-BitcoinCore) in full mode.
   node started its download again), the page offers "Build the index again".
 
 Ports 50001 (plain) and 50002 (SSL) are published on the box so wallets on the
-home network can reach it.
+home network can reach it. The AVADO DAPPMANAGER asks the home router (UPnP)
+to forward every published port to the internet, and Fulcrum has no list of
+allowed callers, so Fulcrum listens on 127.0.0.1 only (ports 60001/60002) and
+`build/app/gate.py` serves the wallet ports: it passes a connection on to
+Fulcrum byte for byte (SSL stays end to end) only when it comes from a private
+network (home network, AVADO Wi-Fi, AVADO Remote Access), the AVADO apps'
+network 172.33.0.0/16, the VPN range 100.64.0.0/10 or the box itself. Docker
+forwards published ports with DNAT, so the gate sees the caller's real
+address; anyone else is disconnected at once.
 
 Setting: `DB_MEM_MB` (Fulcrum's database memory, default 2048).
 

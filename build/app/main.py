@@ -9,6 +9,9 @@
   Server needs the full node.
 - Shows the index progress, and the exact address and port to type into
   Sparrow, Electrum and other wallets.
+- Fulcrum listens on 127.0.0.1 only; the wallet ports 50001/50002 are served
+  by gate.py, which lets in only the home network, VPNs and other AVADO apps
+  (the DAPPMANAGER asks the router to forward published ports to the internet).
 """
 
 import collections
@@ -26,6 +29,7 @@ import threading
 import time
 
 import avadoweb
+import gate
 import wamp
 from avadoweb import log
 from bitcoinrpc import RPC_IN_WARMUP, BitcoinRpc, RpcError, fetch_login
@@ -67,6 +71,9 @@ class Config:
         self.db_mem_mb = env_int("DB_MEM_MB", 2048, 200, 32000, env=env)
         self.tcp_port = env_int("TCP_PORT", 50001, 1, 65535, env=env)
         self.ssl_port = env_int("SSL_PORT", 50002, 1, 65535, env=env)
+        # Where Fulcrum itself listens (127.0.0.1 only, behind gate.py)
+        self.fulcrum_tcp_port = 60001
+        self.fulcrum_ssl_port = 60002
         self.admin_port = 8000
         self.fulcrum = env.get("FULCRUM", "/usr/bin/Fulcrum")
         self.wamp_host = env.get("WAMP_HOST") or "wamp.my.ava.do"
@@ -79,8 +86,9 @@ def render_conf(config, user, password, rpc_port):
         "bitcoind = %s:%d" % (config.bitcoin_host, rpc_port),
         "rpcuser = %s" % user,
         "rpcpassword = %s" % password,
-        "tcp = 0.0.0.0:%d" % config.tcp_port,
-        "ssl = 0.0.0.0:%d" % config.ssl_port,
+        # Only the gate (gate.py) reaches these; wallets use tcp_port/ssl_port.
+        "tcp = 127.0.0.1:%d" % config.fulcrum_tcp_port,
+        "ssl = 127.0.0.1:%d" % config.fulcrum_ssl_port,
         "cert = %s" % CERT_FILE,
         "key = %s" % KEY_FILE,
         "admin = 127.0.0.1:%d" % config.admin_port,
@@ -366,7 +374,7 @@ class App:
                 info["fulcrum"] = admin_call(self.config.admin_port, "getinfo")
             except (OSError, ValueError, RuntimeError):
                 info["fulcrum"] = None
-            info["ready"] = port_open(self.config.tcp_port)
+            info["ready"] = port_open(self.config.fulcrum_tcp_port)
         info["lanIp"] = self.box_ip()
         info["fingerprint"] = certificate_fingerprint()
         return info
@@ -386,6 +394,9 @@ class App:
         ensure_certificate()
         with open(BANNER_FILE, "w", encoding="utf-8") as handle:
             handle.write(BANNER)
+        # The wallet ports: only the home network, VPNs and AVADO apps get through.
+        gate.Gate(self.config.tcp_port, self.config.fulcrum_tcp_port).start()
+        gate.Gate(self.config.ssl_port, self.config.fulcrum_ssl_port).start()
         avadoweb.WebApp(PUBLIC_DIR, self.status, actions={"rebuild-index": self.action_rebuild_index},
                         version=VERSION, title="Electrum Server").serve(port=env_int("PORT", 80))
         threading.Thread(target=self.loop, daemon=True).start()
@@ -528,8 +539,9 @@ def build_model(info, config, rate):
         {"k": "Shared with the public Electrum network", "v": "No (private server)"},
     ]
     model["sections"].append({"id": "details", "title": "About this server",
-                              "text": ["The server answers only wallets that can reach your AVADO: on your home "
-                                       "network, the AVADO Wi-Fi or Remote Access. It is not announced to anyone."],
+                              "text": ["The server answers only wallets on your home network, the AVADO Wi-Fi or "
+                                       "AVADO Remote Access. Anyone else on the internet is turned away, even if "
+                                       "your router forwards the port. It is not announced to anyone."],
                               "advanced": adv})
     return model
 

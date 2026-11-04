@@ -7,6 +7,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import avadoweb  # noqa: E402
+import gate  # noqa: E402
 import main  # noqa: E402
 
 GB = 1000 ** 3
@@ -32,7 +33,10 @@ class ConfTest(unittest.TestCase):
         self.assertIn("announce = false", conf)
         self.assertIn("bitcoind = DAppNodePackage-bitcoincore.avado.dnp.dappnode.eth:8332", conf)
         self.assertIn("admin = 127.0.0.1:8000", conf)
-        self.assertIn("ssl = 0.0.0.0:50002", conf)
+        # Fulcrum itself is reachable only through the gate
+        self.assertIn("ssl = 127.0.0.1:60002", conf)
+        self.assertIn("tcp = 127.0.0.1:60001", conf)
+        self.assertNotIn("0.0.0.0", conf)
         self.assertNotIn("fast-sync", conf)
 
 
@@ -114,6 +118,42 @@ class ExitTest(unittest.TestCase):
 
     def test_disk(self):
         self.assertEqual(main.explain_exit(["IO error: No space left on device"]), "disk")
+
+
+class GateTest(unittest.TestCase):
+    def test_home_vpn_and_avado_callers_get_in(self):
+        for ip in ("192.168.1.23", "10.20.30.40", "172.16.0.9", "172.33.1.7", "100.101.102.103", "127.0.0.1",
+                   "::1", "fd12:3456::1", "fe80::1%eth0", "::ffff:192.168.0.5", "169.254.1.1"):
+            self.assertTrue(gate.allowed_source(ip), ip)
+
+    def test_internet_callers_are_turned_away(self):
+        for ip in ("8.8.8.8", "185.199.108.1", "172.34.0.1", "2001:4860::8888", "::ffff:8.8.8.8", "0.0.0.0",
+                   "224.0.0.1", "", None, "not-an-ip"):
+            self.assertFalse(gate.allowed_source(ip), ip)
+
+    def test_passes_bytes_both_ways(self):
+        import socket
+        import threading
+        backend = socket.socket()
+        backend.bind(("127.0.0.1", 0))
+        backend.listen(1)
+
+        def echo():
+            conn, _ = backend.accept()
+            with conn:
+                conn.sendall(conn.recv(100).upper())
+
+        threading.Thread(target=echo, daemon=True).start()
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        g = gate.Gate(port, backend.getsockname()[1], host="127.0.0.1").start()
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as c:
+            c.sendall(b"ping")
+            self.assertEqual(c.recv(100), b"PING")
+        g.sock.close()
+        backend.close()
 
 
 class CertTest(unittest.TestCase):
