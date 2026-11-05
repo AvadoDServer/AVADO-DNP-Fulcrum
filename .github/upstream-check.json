@@ -1,0 +1,25 @@
+{
+  "title": "Electrum Server (Fulcrum)",
+  "components": [
+    {
+      "name": "Fulcrum",
+      "github": "cculianu/Fulcrum",
+      "images": [
+        {
+          "var": "fulcrum",
+          "ref": "cculianu/fulcrum:v{version}"
+        }
+      ],
+      "pins": [
+        {
+          "file": "build/Dockerfile",
+          "text": "ARG FULCRUM_IMAGE=cculianu/fulcrum:v{version}@sha256:{fulcrum}"
+        },
+        {
+          "file": "dappnode_package.json",
+          "text": "\"upstream\": \"v{version}\""
+        }
+      ]
+    }
+  ]
+}
